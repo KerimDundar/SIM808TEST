@@ -8,6 +8,7 @@ const http = require("http");
 const WebSocket = require("ws");
 
 // ---------------- In-memory storage (prototype) ----------------
+// PROD'da bunu Postgres/Supabase'e yazarsın.
 const devices = new Map(); // devId -> { latest, socket, lastSeen }
 const pendingCommands = new Map(); // devId -> [{id, set, createdAt}]
 
@@ -35,41 +36,25 @@ const tcpServer = net.createServer((socket) => {
   let buf = "";
 
   socket.on("data", (chunk) => {
-    // DEBUG: raw incoming bytes
-    console.log("⚡ [TCP] raw chunk:", chunk.toString());
-
     buf += chunk.toString("utf8");
 
     // NDJSON: split by newline
     while (true) {
       const idx = buf.indexOf("\n");
       if (idx < 0) break;
-
       const line = buf.slice(0, idx).trim();
       buf = buf.slice(idx + 1);
 
       if (!line) continue;
-
-      // DEBUG: one complete line
-      console.log("📨 [TCP] line:", line);
-
       const msg = safeJsonParse(line);
-      if (!msg || typeof msg !== "object") {
-        console.log("⚠ JSON parse failed:", line);
-        continue;
-      }
-
-      // DEBUG: parsed JSON object
-      console.log("✔ Parsed JSON:", msg);
+      if (!msg || typeof msg !== "object") continue;
 
       // Expect: msg.dev on hello/telemetry/state
       if (!devId && msg.dev) {
         devId = String(msg.dev);
         ensureDevice(devId);
-        const d0 = devices.get(devId);
-        d0.socket = socket;
-        d0.lastSeen = Date.now();
-
+        devices.get(devId).socket = socket;
+        devices.get(devId).lastSeen = Date.now();
         // Send optional hello-ack
         socket.write(JSON.stringify({ type: "hello_ack", ts: Date.now() }) + "\n");
       }
@@ -96,6 +81,7 @@ const tcpServer = net.createServer((socket) => {
           d.latest = msg;
           broadcastWS(devId, msg);
         } else if (msg.type === "ack") {
+          // optional: handle ack
           broadcastWS(devId, msg);
         }
       }
@@ -110,8 +96,8 @@ const tcpServer = net.createServer((socket) => {
     }
   });
 
-  socket.on("error", (err) => {
-    console.error("Socket error:", err);
+  socket.on("error", () => {
+    // ignore
   });
 });
 
@@ -205,7 +191,9 @@ wss.on("connection", (ws, req) => {
 
   ws.send(JSON.stringify({ type: "ws_ready", ts: Date.now(), filter: ws._devFilter }));
 
-  ws.on("message", () => {});
+  ws.on("message", () => {
+    // Mobile -> server messages not needed now
+  });
 });
 
 server.listen(HTTP_PORT, "0.0.0.0", () => {
