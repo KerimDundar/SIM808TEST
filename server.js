@@ -51,7 +51,27 @@ app.get("/devices/:id/latest", (req, res) => {
 
 // Create a raw TCP handler on the same server
 const server = http.createServer(app);
+const express = require("express");
+const cors = require("cors");
 
+const app = express();
+app.use(cors());
+app.use(express.json()); // JSON body parse
+
+app.get("/health", (_req, res) => {
+  res.json({ ok: true });
+});
+
+// Telemetry POST endpoint
+app.post("/device/telemetry", (req, res) => {
+  console.log("📬 Received telemetry data:", req.body);
+  res.json({ ok: true });
+});
+
+const port = process.env.PORT || 8080;
+app.listen(port, () => {
+  console.log(`HTTP API listening on port ${port}`);
+});
 // Buffer for partial lines
 function handleTCPsocket(socket) {
   let buf = "";
